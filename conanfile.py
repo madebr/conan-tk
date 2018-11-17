@@ -169,8 +169,14 @@ class TkConan(ConanFile):
         autoTools = self._get_auto_tools()
         autoTools.configure(configure_dir=self._get_configure_dir(), args=conf_args)
 
-        with tools.chdir(self.build_folder):
-            autoTools.make()
+        try:
+            with tools.chdir(self.build_folder):
+                autoTools.make()
+        except ConanException:
+            self.output.error("make failed!")
+            self.output.info("Outputting config.log")
+            self.output.info(open(os.path.join(self.build_folder, "config.log")).read())
+            raise
 
     def build(self):
         if self.settings.compiler == "Visual Studio":
