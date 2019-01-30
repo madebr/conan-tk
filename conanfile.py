@@ -8,7 +8,7 @@ import re
 
 class TkConan(ConanFile):
     name = "tk"
-    version = "8.6.8"
+    version = "8.6.9"
     description = "Tk is a graphical user interface toolkit that takes developing desktop applications to a higher level than conventional approaches."
     topics = ["conan", "tcl", "scripting", "programming"]
     url = "https://github.com/bincrafters/conan-tk"
@@ -26,13 +26,22 @@ class TkConan(ConanFile):
         "shared": False,
     }
     _source_subfolder = "sources"
-    requires = ("tcl/{}@bincrafters/stable".format(version))
+
+    def requirements(self):
+        self.requires("tcl/{}@{}/{}".format(self.version, self.user, self.channel))
 
     @property
     def _is_mingw_windows(self):
         return self.settings.os == "Windows" and self.settings.compiler == "gcc"
 
     def config_options(self):
+        if self.settings.os == "Windows":
+            del self.options.fPIC
+        else:
+            if self.options.shared:
+                del self.options.fPIC  # Does not make sense.
+
+    def configure(self):
         if self.settings.compiler != "Visual Studio":
             del self.settings.compiler.libcxx
 
@@ -42,7 +51,7 @@ class TkConan(ConanFile):
 
     def source(self):
         url = "https://prdownloads.sourceforge.net/tcl/tk{}-src.tar.gz".format(self.version)
-        tools.get(url, sha256="49e7bca08dde95195a27f594f7c850b088be357a7c7096e44e1158c7a5fd7b33")
+        tools.get(url, sha256="d3f9161e8ba0f107fe8d4df1f6d3a14c30cc3512dfc12a795daa367a27660dac")
         extracted_dir = "{}{}".format(self.name, self.version)
         os.rename(extracted_dir, self._source_subfolder)
 
@@ -58,18 +67,6 @@ class TkConan(ConanFile):
         tools.replace_in_file(unix_makefile_in, "\nCFLAGS\t", "\n#CFLAGS\t")
         tools.replace_in_file(unix_makefile_in, "\nLDFLAGS\t", "\n#LDFLAGS\t")
         tools.replace_in_file(unix_makefile_in, "${CFLAGS}", "${CFLAGS} ${CPPFLAGS}")
-
-        for configure in [os.path.join("macosx", "configure"),
-                          os.path.join("unix", "configure"),
-                          os.path.join("unix", "configure.in"),]:
-            conf_path = os.path.join(self.source_folder, self._source_subfolder, configure)
-
-    def config_options(self):
-        if self.settings.os == "Windows":
-            del self.options.fPIC
-        else:
-            if self.options.shared:
-                del self.options.fPIC  # Does not make sense.
 
     def system_requirements(self):
         if tools.os_info.with_apt:

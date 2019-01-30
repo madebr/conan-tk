@@ -1,6 +1,6 @@
 [![Download](https://api.bintray.com/packages/bincrafters/public-conan/tk%3Abincrafters/images/download.svg) ](https://bintray.com/bincrafters/public-conan/tk%3Abincrafters/_latestVersion)
-[![Build Status](https://travis-ci.org/bincrafters/conan-tk.svg?branch=stable%2F8.6.8)](https://travis-ci.org/bincrafters/conan-tk)
-[![Build status](https://ci.appveyor.com/api/projects/status/github/bincrafters/conan-tk?branch=stable%2F8.6.8&svg=true)](https://ci.appveyor.com/project/bincrafters/conan-tk)
+[![Build Status](https://travis-ci.org/bincrafters/conan-tk.svg?branch=stable%2F8.6.9)](https://travis-ci.org/bincrafters/conan-tk)
+[![Build status](https://ci.appveyor.com/api/projects/status/github/bincrafters/conan-tk?branch=stable%2F8.6.9&svg=true)](https://ci.appveyor.com/project/bincrafters/conan-tk)
 
 [Conan.io](https://conan.io) package recipe for [*tk*](https://tcl.tk).
 
@@ -12,14 +12,14 @@ The packages generated with this **conanfile** can be found on [Bintray](https:/
 
 ### Basic setup
 
-    $ conan install tk/8.6.8@bincrafters/stable
+    $ conan install tk/8.6.9@bincrafters/stable
 
 ### Project setup
 
 If you handle multiple dependencies in your project is better to add a *conanfile.txt*
 
     [requires]
-    tk/8.6.8@bincrafters/stable
+    tk/8.6.9@bincrafters/stable
 
     [generators]
     txt
@@ -53,7 +53,7 @@ The following command both runs all the steps of the conan file, and publishes t
 
 ## Upload
 
-    $ conan upload tk/8.6.8@bincrafters/stable --all -r bincrafters
+    $ conan upload tk/8.6.9@bincrafters/stable --all -r bincrafters
 
 
 ## Conan Recipe License
@@ -61,4 +61,4 @@ The following command both runs all the steps of the conan file, and publishes t
 NOTE: The conan recipe license applies only to the files of this recipe, which can be used to build and package tk.
 It does *not* in any way apply or is related to the actual software being packaged.
 
-[MIT](https://github.com/bincrafters/conan-tk.git/blob/testing/8.6.8/LICENSE.md)
+[MIT](https://github.com/bincrafters/conan-tk.git/blob/testing/8.6.9/LICENSE)
