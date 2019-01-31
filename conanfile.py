@@ -162,13 +162,13 @@ class TkConan(ConanFile):
             newTclConfig_sh_path = os.path.join(self.build_folder, "tclConfig.sh")
             open(newTclConfig_sh_path, "w").write(newTclConfig_sh)
         except (AttributeError, FileNotFoundError):
-            raise ConanException("Could patch tclConfig.sh")
+            raise Exception("Patching tclConfig.sh failed")
         return newTclConfig_sh_path
 
     def _build_autotools(self):
         tclConfigShPath = self._patch_tclConfig_sh()
         conf_args = [
-            "--with-tcl={}".format(os.path.dirname(tclConfigShPath)),
+            "--with-tcl={}".format(os.path.dirname(tclConfigShPath.replace("\\", "/"))),
             "--enable-threads",
             "--enable-shared" if self.options.shared else "--disable-shared",
             "--enable-symbols" if self.settings.build_type == "Debug" else "--disable-symbols",
