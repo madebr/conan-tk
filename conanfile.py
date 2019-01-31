@@ -2,8 +2,10 @@
 
 from conans import ConanFile, AutoToolsBuildEnvironment, tools
 from conans.errors import ConanException, ConanExceptionInUserConanfileMethod
+from conans.util.env_reader import get_env
 import os
 import re
+import tempfile
 
 
 class TkConan(ConanFile):
@@ -50,8 +52,19 @@ class TkConan(ConanFile):
             self.build_requires("msys2_installer/latest@bincrafters/stable")
 
     def source(self):
-        url = "https://prdownloads.sourceforge.net/tcl/tk{}-src.tar.gz".format(self.version)
-        tools.get(url, sha256="d3f9161e8ba0f107fe8d4df1f6d3a14c30cc3512dfc12a795daa367a27660dac")
+        filename = "tk{}-src.tar.gz".format(self.version)
+        url = "https://prdownloads.sourceforge.net/tcl/{}".format(filename)
+        sha256 = "d3f9161e8ba0f107fe8d4df1f6d3a14c30cc3512dfc12a795daa367a27660dac"
+
+        dlfilepath = os.path.join(tempfile.gettempdir(), filename)
+        if os.path.exists(dlfilepath) and not get_env("TK_FORCE_DOWNLOAD", False):
+            self.output.info("Skipping download. Using cached {}".format(dlfilepath))
+        else:
+            self.output.info("Downloading {} from {}".format(self.name, url))
+            tools.download(url, dlfilepath)
+        tools.check_sha256(dlfilepath, sha256)
+        tools.untargz(dlfilepath)
+
         extracted_dir = "{}{}".format(self.name, self.version)
         os.rename(extracted_dir, self._source_subfolder)
 
