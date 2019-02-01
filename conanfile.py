@@ -5,6 +5,7 @@ from conans.errors import ConanException, ConanExceptionInUserConanfileMethod
 from conans.util.env_reader import get_env
 import os
 import re
+import shutil
 import tempfile
 
 
@@ -20,12 +21,12 @@ class TkConan(ConanFile):
     exports = ["LICENSE.md"]
     settings = "os", "compiler", "build_type", "arch"
     options = {
+        "shared": [True, False],
         "fPIC": [True, False],
-        "shared": [True, False]
     }
     default_options = {
-        "fPIC": True,
         "shared": False,
+        "fPIC": True,
     }
     _source_subfolder = "sources"
 
@@ -201,6 +202,7 @@ class TkConan(ConanFile):
             with tools.chdir(self.build_folder):
                 autoTools = self._get_auto_tools()
                 autoTools.install()
+            shutil.rmtree(os.path.join(self.package_folder, "lib", "pkgconfig"))
         self.copy(pattern="license.terms", dst="licenses", src=self._source_subfolder)
 
     def package_info(self):
