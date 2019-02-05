@@ -28,7 +28,8 @@ class TkConan(ConanFile):
         "shared": False,
         "fPIC": True,
     }
-    _source_subfolder = "sources"
+    _source_subfolder = "sources_tk"
+    _source_tcl_subfolder = "sources_tcl"
 
     def requirements(self):
         self.requires("tcl/{}@{}/{}".format(self.version, self.user, self.channel))
@@ -53,34 +54,44 @@ class TkConan(ConanFile):
             self.build_requires("msys2_installer/latest@bincrafters/stable")
 
     def source(self):
-        filename = "tk{}-src.tar.gz".format(self.version)
-        url = "https://prdownloads.sourceforge.net/tcl/{}".format(filename)
-        sha256 = "d3f9161e8ba0f107fe8d4df1f6d3a14c30cc3512dfc12a795daa367a27660dac"
+        filename_tk = "tk{}-src.tar.gz".format(self.version)
+        url_tk = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tk)
+        sha256_tk = "d3f9161e8ba0f107fe8d4df1f6d3a14c30cc3512dfc12a795daa367a27660dac"
 
-        dlfilepath = os.path.join(tempfile.gettempdir(), filename)
-        if os.path.exists(dlfilepath) and not get_env("TK_FORCE_DOWNLOAD", False):
-            self.output.info("Skipping download. Using cached {}".format(dlfilepath))
-        else:
-            self.output.info("Downloading {} from {}".format(self.name, url))
-            tools.download(url, dlfilepath)
-        tools.check_sha256(dlfilepath, sha256)
-        tools.untargz(dlfilepath)
+        filename_tcl = "tcl{}-src.tar.gz".format(self.version)
+        url_tcl = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tcl)
+        sha256_tcl = "ad0cd2de2c87b9ba8086b43957a0de3eb2eb565c7159d5f53ccbba3feb915f4e"
 
-        extracted_dir = "{}{}".format(self.name, self.version)
-        os.rename(extracted_dir, self._source_subfolder)
+        for name, filename, url, sha256, source_subfolder in (("tk", filename_tk, url_tk, sha256_tk, self._source_subfolder),
+                                            ("tcl", filename_tcl, url_tcl, sha256_tcl, self._source_tcl_subfolder)):
+            dlfilepath = os.path.join(tempfile.gettempdir(), filename)
+            if os.path.exists(dlfilepath) and not get_env("TK_FORCE_DOWNLOAD", False):
+                self.output.info("Skipping download. Using cached {}".format(dlfilepath))
+            else:
+                self.output.info("Downloading {} from {}".format(self.name, url))
+                tools.download(url, dlfilepath)
+            tools.check_sha256(dlfilepath, sha256)
+            tools.untargz(dlfilepath)
 
-        unix_config_dir = self._get_configure_dir("unix")
-        # When disabling 64-bit support (in 32-bit), this test must be 0 in order to use "long long" for 64-bit ints
-        # (${tcl_type_64bit} can be either "__int64" or "long long")
-        tools.replace_in_file(os.path.join(unix_config_dir, "configure"),
-                              "(sizeof(${tcl_type_64bit})==sizeof(long))",
-                              "(sizeof(${tcl_type_64bit})!=sizeof(long))")
+            extracted_dir = "{}{}".format(name, self.version)
+            os.rename(extracted_dir, source_subfolder)
 
-        unix_makefile_in = os.path.join(unix_config_dir, "Makefile.in")
-        # Avoid clearing CFLAGS and LDFLAGS in the makefile
-        tools.replace_in_file(unix_makefile_in, "\nCFLAGS\t", "\n#CFLAGS\t")
-        tools.replace_in_file(unix_makefile_in, "\nLDFLAGS\t", "\n#LDFLAGS\t")
-        tools.replace_in_file(unix_makefile_in, "${CFLAGS}", "${CFLAGS} ${CPPFLAGS}")
+            unix_config_dir = self._get_configure_dir("unix", source_subfolder)
+            # When disabling 64-bit support (in 32-bit), this test must be 0 in order to use "long long" for 64-bit ints
+            # (${tcl_type_64bit} can be either "__int64" or "long long")
+            tools.replace_in_file(os.path.join(unix_config_dir, "configure"),
+                                  "(sizeof(${tcl_type_64bit})==sizeof(long))",
+                                  "(sizeof(${tcl_type_64bit})!=sizeof(long))")
+
+            unix_makefile_in = os.path.join(unix_config_dir, "Makefile.in")
+            # Avoid clearing CFLAGS and LDFLAGS in the makefile
+            tools.replace_in_file(unix_makefile_in, "\nCFLAGS\t", "\n#CFLAGS\t")
+            tools.replace_in_file(unix_makefile_in, "\nLDFLAGS\t", "\n#LDFLAGS\t")
+            tools.replace_in_file(unix_makefile_in, "${CFLAGS}", "${CFLAGS} ${CPPFLAGS}")
+
+    def config_options(self):
+        if self.settings.compiler == "Visual Studio" or self.options.shared:
+            del self.options.fPIC
 
     def system_requirements(self):
         if tools.os_info.with_apt:
@@ -118,20 +129,22 @@ class TkConan(ConanFile):
         else:
             raise ConanExceptionInUserConanfileMethod("Unknown settings.os={}".format(self.settings.os))
 
-    def _get_configure_dir(self, build_system=None):
+    def _get_configure_dir(self, build_system=None, source_subfolder=None):
+        if source_subfolder is None:
+            source_subfolder = self._source_subfolder
         if build_system is None:
             build_system = self._get_default_build_system()
         if build_system not in ["win", "unix", "macosx"]:
             raise ConanExceptionInUserConanfileMethod("Invalid build system: {}".format(build_system))
-        return os.path.join(self.source_folder, self._source_subfolder, build_system)
+        return os.path.join(self.source_folder, source_subfolder, build_system)
 
     def _get_auto_tools(self):
         autoTools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
         return autoTools
 
     def _build_nmake(self, target="release"):
+        # Fails for VS2017+: https://core.tcl.tk/tips/doc/trunk/tip/477.md
         opts = []
-        # https://core.tcl.tk/tips/doc/trunk/tip/477.md
         if not self.options.shared:
             opts.append("static")
         if self.settings.build_type == "Debug":
@@ -140,13 +153,16 @@ class TkConan(ConanFile):
             opts.append("msvcrt")
         else:
             opts.append("nomsvcrt")
+        if "d" in self.settings.compiler.runtime:
+            opts.append("unchecked")
         vcvars_command = tools.vcvars_command(self.settings)
         self.run(
-            """{vcvars} && nmake -nologo -f "{cfgdir}/makefile.vc" shell INSTALLDIR="{pkgdir}" OPTS={opts} {target}""".format(
+            """{vcvars} && nmake -nologo -f "{cfgdir}/makefile.vc" shell INSTALLDIR="{pkgdir}" OPTS={opts} TCLDIR="{tcldir}" {target}""".format(
                 vcvars=vcvars_command,
                 cfgdir=self._get_configure_dir("win"),
                 pkgdir=self.package_folder,
                 opts=",".join(opts),
+                tcldir=os.path.join(self.source_folder, self._source_tcl_subfolder),  # self.deps_cpp_info["tcl"].rootpath,
                 target=target,
             ), cwd=self._get_configure_dir("win"),
         )
