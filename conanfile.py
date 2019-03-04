@@ -181,17 +181,10 @@ class TkConan(ConanFile):
             raise ConanInvalidConfiguration("Patching tclConfig.sh failed")
         return newTclConfig_sh_path
 
-    @property
-    def _make_args(self):
-        make_args = []
-        if self.settings.os == "Macos":
-            make_args.extend(["-f", os.path.join(self.source_folder, self._source_subfolder, "macosx", "GNUmakefile")])
-        return make_args
-
     def _build_autotools(self):
         # FIXME: move this fixing of tclConfig.sh to tcl
         tcl_root = self.deps_cpp_info["tcl"].rootpath
-        tclConfigShPath = os.path.join(self.package_folder, "lib", "tclConfig.sh")
+        tclConfigShPath = os.path.join(tcl_root, "lib", "tclConfig.sh")
         tools.replace_in_file(tclConfigShPath,
                               os.path.join(self.package_folder),
                               tcl_root,
@@ -218,7 +211,7 @@ class TkConan(ConanFile):
 
         try:
             with tools.chdir(self.build_folder):
-                autoTools.make(args=self._make_args)
+                autoTools.make()
         except ConanException:
             self.output.error("make failed!")
             self.output.info("Outputting config.log")
@@ -239,7 +232,7 @@ class TkConan(ConanFile):
         else:
             with tools.chdir(self.build_folder):
                 autoTools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
-                autoTools.install(args=self._make_args)
+                autoTools.install()
             shutil.rmtree(os.path.join(self.package_folder, "lib", "pkgconfig"))
         self.copy(pattern="license.terms", dst="licenses", src=self._source_subfolder)
 
