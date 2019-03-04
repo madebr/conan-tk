@@ -3,6 +3,7 @@
 from conans import ConanFile, AutoToolsBuildEnvironment, tools
 from conans.errors import ConanException, ConanExceptionInUserConanfileMethod
 from conans.util.env_reader import get_env
+from conans.errors import ConanInvalidConfiguration
 import os
 import re
 import shutil
@@ -180,7 +181,7 @@ class TkConan(ConanFile):
             newTclConfig_sh_path = os.path.join(self.build_folder, "tclConfig.sh")
             open(newTclConfig_sh_path, "w").write(newTclConfig_sh)
         except (AttributeError, FileNotFoundError):
-            raise Exception("Patching tclConfig.sh failed")
+            raise ConanInvalidConfiguration("Patching tclConfig.sh failed")
         return newTclConfig_sh_path
 
     def _build_autotools(self):
