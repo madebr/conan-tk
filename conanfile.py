@@ -58,6 +58,7 @@ class TkConan(ConanFile):
         url_tk = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tk)
         sha256_tk = "d3f9161e8ba0f107fe8d4df1f6d3a14c30cc3512dfc12a795daa367a27660dac"
 
+        # building tk on windows requires the tcl source
         filename_tcl = "tcl{}-src.tar.gz".format(self.version)
         url_tcl = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tcl)
         sha256_tcl = "ad0cd2de2c87b9ba8086b43957a0de3eb2eb565c7159d5f53ccbba3feb915f4e"
@@ -193,6 +194,8 @@ class TkConan(ConanFile):
         ]
         if self.settings.os == "Linux":
             conf_args.append("--with-x")
+        elif self.settings.os == "Macos":
+            conf_args.append("--enable-aqua")
         autoTools = self._get_auto_tools()
         autoTools.configure(configure_dir=self._get_configure_dir(), args=conf_args)
 
