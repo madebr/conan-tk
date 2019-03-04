@@ -188,9 +188,20 @@ class TkConan(ConanFile):
             make_args.extend(["-f", os.path.join(self.source_folder, self._source_subfolder, "macosx", "GNUmakefile")])
         return make_args
 
-
     def _build_autotools(self):
-        tclConfigShPath = self._patch_tclConfig_sh()
+        # FIXME: move this fixing of tclConfig.sh to tcl
+        tcl_root = self.deps_cpp_info["tcl"].rootpath
+        tclConfigShPath = os.path.join(self.package_folder, "lib", "tclConfig.sh")
+        tools.replace_in_file(tclConfigShPath,
+                              os.path.join(self.package_folder),
+                              tcl_root,
+                              strict=False)
+        tools.replace_in_file(tclConfigShPath,
+                              "TCL_BUILD_",
+                              "#TCL_BUILD_",
+                              strict=False)
+
+        # tclConfigShPath = self._patch_tclConfig_sh()
         conf_args = [
             "--with-tcl={}".format(os.path.dirname(tclConfigShPath.replace("\\", "/"))),
             "--enable-threads",
@@ -205,7 +216,6 @@ class TkConan(ConanFile):
         os.environ['PATH'] = self.deps_cpp_info['tcl'].rootpath + os.path.pathsep + os.environ['PATH']
         autoTools.configure(configure_dir=self._get_configure_dir(), args=conf_args)
 
-
         try:
             with tools.chdir(self.build_folder):
                 autoTools.make(args=self._make_args)
@@ -213,6 +223,8 @@ class TkConan(ConanFile):
             self.output.error("make failed!")
             self.output.info("Outputting config.log")
             self.output.info(open(os.path.join(self.build_folder, "config.log")).read())
+            self.output.info("Outputting config.status")
+            self.output.info(open(os.path.join(self.build_folder, "config.status")).read())
             raise
 
     def build(self):
