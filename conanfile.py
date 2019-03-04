@@ -59,7 +59,7 @@ class TkConan(ConanFile):
         url_tk = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tk)
         sha256_tk = "d3f9161e8ba0f107fe8d4df1f6d3a14c30cc3512dfc12a795daa367a27660dac"
 
-        # building tk on windows requires the tcl source
+        # building tk on macos and windows requires the tcl sources
         filename_tcl = "tcl{}-src.tar.gz".format(self.version)
         url_tcl = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tcl)
         sha256_tcl = "ad0cd2de2c87b9ba8086b43957a0de3eb2eb565c7159d5f53ccbba3feb915f4e"
@@ -140,12 +140,10 @@ class TkConan(ConanFile):
             raise ConanExceptionInUserConanfileMethod("Invalid build system: {}".format(build_system))
         return os.path.join(self.source_folder, source_subfolder, build_system)
 
-    def _get_auto_tools(self):
-        autoTools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
-        return autoTools
-
     def _build_nmake(self, target="release"):
-        # Fails for VS2017+: https://core.tcl.tk/tips/doc/trunk/tip/477.md
+        # Fails for VS2017+:
+        # https://core.tcl.tk/tips/doc/trunk/tip/477.md
+        # https://core.tcl.tk/tk/tktview?name=3d34589aa0
         opts = []
         if not self.options.shared:
             opts.append("static")
@@ -155,19 +153,18 @@ class TkConan(ConanFile):
             opts.append("msvcrt")
         else:
             opts.append("nomsvcrt")
-        if "d" in self.settings.compiler.runtime:
+        if "d" not in self.settings.compiler.runtime:
             opts.append("unchecked")
-        vcvars_command = tools.vcvars_command(self.settings)
-        self.run(
-            """{vcvars} && nmake -nologo -f "{cfgdir}/makefile.vc" shell INSTALLDIR="{pkgdir}" OPTS={opts} TCLDIR="{tcldir}" {target}""".format(
-                vcvars=vcvars_command,
-                cfgdir=self._get_configure_dir("win"),
-                pkgdir=self.package_folder,
-                opts=",".join(opts),
-                tcldir=os.path.join(self.source_folder, self._source_tcl_subfolder),  # self.deps_cpp_info["tcl"].rootpath,
-                target=target,
-            ), cwd=self._get_configure_dir("win"),
-        )
+        with tools.vcvars(self.settings):
+            self.run(
+                """nmake -nologo -f "{cfgdir}/makefile.vc" shell INSTALLDIR="{pkgdir}" OPTS={opts} TCLDIR="{tcldir}" {target}""".format(
+                    cfgdir=self._get_configure_dir("win"),
+                    pkgdir=self.package_folder,
+                    opts=",".join(opts),
+                    tcldir=os.path.join(self.source_folder, self._source_tcl_subfolder),  # self.deps_cpp_info["tcl"].rootpath,
+                    target=target,
+                ), cwd=self._get_configure_dir("win"),
+            )
 
     def _patch_tclConfig_sh(self):
         try:
@@ -192,12 +189,12 @@ class TkConan(ConanFile):
             "--enable-shared" if self.options.shared else "--disable-shared",
             "--enable-symbols" if self.settings.build_type == "Debug" else "--disable-symbols",
             "--enable-64bit" if self.settings.arch == "x86_64" else "--disable-64bit",
+            "--with-x" if self.settings.os == "Linux" else "--without-x",
+            "--enable-aqua={}".format("on" if self.settings.os == "Macos" else "off"),
         ]
-        if self.settings.os == "Linux":
-            conf_args.append("--with-x")
-        elif self.settings.os == "Macos":
-            conf_args.append("--enable-aqua")
-        autoTools = self._get_auto_tools()
+        autoTools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
+        autoTools.include_paths.append(os.path.join(self.source_folder, self._source_tcl_subfolder, "generic"))
+        os.environ['PATH'] = self.deps_cpp_info['tcl'].rootpath + os.path.pathsep + os.environ['PATH']
         autoTools.configure(configure_dir=self._get_configure_dir(), args=conf_args)
 
         try:
@@ -220,7 +217,7 @@ class TkConan(ConanFile):
             self._build_nmake("install")
         else:
             with tools.chdir(self.build_folder):
-                autoTools = self._get_auto_tools()
+                autoTools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
                 autoTools.install()
             shutil.rmtree(os.path.join(self.package_folder, "lib", "pkgconfig"))
         self.copy(pattern="license.terms", dst="licenses", src=self._source_subfolder)
