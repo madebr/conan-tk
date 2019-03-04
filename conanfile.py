@@ -32,7 +32,7 @@ class TkConan(ConanFile):
     _source_tcl_subfolder = "sources_tcl"
 
     def requirements(self):
-        self.requires("tcl/{}@{}/{}".format(self.version, self.user, self.channel))
+        self.requires("tcl/{}@bincrafters/stable".format(self.version))
 
     @property
     def _is_mingw_windows(self):
