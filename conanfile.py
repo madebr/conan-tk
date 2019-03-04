@@ -181,6 +181,14 @@ class TkConan(ConanFile):
             raise ConanInvalidConfiguration("Patching tclConfig.sh failed")
         return newTclConfig_sh_path
 
+    @property
+    def _make_args(self):
+        make_args = []
+        if self.settings.os == "Macos":
+            make_args.extend(["-f", os.path.join(self.source_folder, self._source_subfolder, "macosx", "GNUmakefile")])
+        return make_args
+
+
     def _build_autotools(self):
         tclConfigShPath = self._patch_tclConfig_sh()
         conf_args = [
@@ -197,9 +205,10 @@ class TkConan(ConanFile):
         os.environ['PATH'] = self.deps_cpp_info['tcl'].rootpath + os.path.pathsep + os.environ['PATH']
         autoTools.configure(configure_dir=self._get_configure_dir(), args=conf_args)
 
+
         try:
             with tools.chdir(self.build_folder):
-                autoTools.make()
+                autoTools.make(args=self._make_args)
         except ConanException:
             self.output.error("make failed!")
             self.output.info("Outputting config.log")
@@ -218,7 +227,7 @@ class TkConan(ConanFile):
         else:
             with tools.chdir(self.build_folder):
                 autoTools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
-                autoTools.install()
+                autoTools.install(args=self._make_args)
             shutil.rmtree(os.path.join(self.package_folder, "lib", "pkgconfig"))
         self.copy(pattern="license.terms", dst="licenses", src=self._source_subfolder)
 
