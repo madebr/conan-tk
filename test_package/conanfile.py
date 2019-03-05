@@ -19,7 +19,7 @@ class TclTestConan(ConanFile):
 
     @property
     def need_xvfb(self):
-        return tools.get_env("DISPLAY", None) is None
+        return tools.os_info.is_linux and tools.get_env("DISPLAY", None) is None
 
     def install_xvfb(self):
         if not shutil.which("Xvfb"):
