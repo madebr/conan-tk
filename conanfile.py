@@ -29,8 +29,9 @@ class TkConan(ConanFile):
         "shared": False,
         "fPIC": True,
     }
-    _source_subfolder = "sources"
+    _source_subfolder = "sources_tk"
     _tcl_version = "8.6.9"
+    _source_tcl_subfolder = "sources_tcl"
 
     def configure(self):
         if self.version.split(".")[:3] != self._tcl_version.split(".")[:3]:
@@ -62,34 +63,42 @@ class TkConan(ConanFile):
         tk_filename_version = ".".join(self.version.split(".")[:3])
         print('tk_filename_version', tk_filename_version)
         filename_tk = "tk{}-src.tar.gz".format(self.version)
-        url_tk = "https://prdownloads.sourceforge.net/tcl/tk{}-src.tar.gz".format(filename_tk)
+        url_tk = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tk)
         sha256_tk = "8fcbcd958a8fd727e279f4cac00971eee2ce271dc741650b1fc33375fb74ebb4"
 
-        name, filename, url, sha256, extracted_dir, source_subfolder = "tk", filename_tk, url_tk, sha256_tk, "tk{}".format(tk_filename_version), self._source_subfolder
+        # building tk on macos and windows requires the tcl sources
+        filename_tcl = "tcl{}-src.tar.gz".format(self._tcl_version)
+        url_tcl = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tcl)
+        sha256_tcl = "ad0cd2de2c87b9ba8086b43957a0de3eb2eb565c7159d5f53ccbba3feb915f4e"
 
-        dlfilepath = os.path.join(tempfile.gettempdir(), filename)
-        if os.path.exists(dlfilepath) and not get_env("TK_FORCE_DOWNLOAD", False):
-            self.output.info("Skipping download. Using cached {}".format(dlfilepath))
-        else:
-            self.output.info("Downloading {} from {}".format(self.name, url))
-            tools.download(url, dlfilepath)
-        tools.check_sha256(dlfilepath, sha256)
-        tools.untargz(dlfilepath)
+        def download_tcltk_source(name, filename, url, sha256, extracted_dir, source_subfolder):
+            dlfilepath = os.path.join(tempfile.gettempdir(), filename)
+            if os.path.exists(dlfilepath) and not get_env("TK_FORCE_DOWNLOAD", False):
+                self.output.info("Skipping download. Using cached {}".format(dlfilepath))
+            else:
+                self.output.info("Downloading {} from {}".format(self.name, url))
+                tools.download(url, dlfilepath)
+            tools.check_sha256(dlfilepath, sha256)
+            tools.untargz(dlfilepath)
 
-        os.rename(extracted_dir, source_subfolder)
+            os.rename(extracted_dir, source_subfolder)
 
-        unix_config_dir = self._get_configure_dir("unix", source_subfolder)
-        # When disabling 64-bit support (in 32-bit), this test must be 0 in order to use "long long" for 64-bit ints
-        # (${tcl_type_64bit} can be either "__int64" or "long long")
-        tools.replace_in_file(os.path.join(unix_config_dir, "configure"),
-                              "(sizeof(${tcl_type_64bit})==sizeof(long))",
-                              "(sizeof(${tcl_type_64bit})!=sizeof(long))")
+            unix_config_dir = self._get_configure_dir("unix", source_subfolder)
+            # When disabling 64-bit support (in 32-bit), this test must be 0 in order to use "long long" for 64-bit ints
+            # (${tcl_type_64bit} can be either "__int64" or "long long")
+            tools.replace_in_file(os.path.join(unix_config_dir, "configure"),
+                                  "(sizeof(${tcl_type_64bit})==sizeof(long))",
+                                  "(sizeof(${tcl_type_64bit})!=sizeof(long))")
 
-        unix_makefile_in = os.path.join(unix_config_dir, "Makefile.in")
-        # Avoid clearing CFLAGS and LDFLAGS in the makefile
-        tools.replace_in_file(unix_makefile_in, "\nCFLAGS\t", "\n#CFLAGS\t")
-        tools.replace_in_file(unix_makefile_in, "\nLDFLAGS\t", "\n#LDFLAGS\t")
-        tools.replace_in_file(unix_makefile_in, "${CFLAGS}", "${CFLAGS} ${CPPFLAGS}")
+            unix_makefile_in = os.path.join(unix_config_dir, "Makefile.in")
+            # Avoid clearing CFLAGS and LDFLAGS in the makefile
+            tools.replace_in_file(unix_makefile_in, "\nCFLAGS\t", "\n#CFLAGS\t")
+            tools.replace_in_file(unix_makefile_in, "\nLDFLAGS\t", "\n#LDFLAGS\t")
+            tools.replace_in_file(unix_makefile_in, "${CFLAGS}", "${CFLAGS} ${CPPFLAGS}")
+
+        download_tcltk_source(name="tk", filename=filename_tk, url=url_tk, sha256=sha256_tk, extracted_dir="tk{}".format(tk_filename_version), source_subfolder=self._source_subfolder)
+        # Building tk on windows, using the tk toolchain requires the tcl sources
+        download_tcltk_source(name="tcl", filename=filename_tcl, url=url_tcl, sha256=sha256_tcl, extracted_dir="tcl{}".format(self._tcl_version), source_subfolder=self._source_tcl_subfolder)
 
     def config_options(self):
         if self.settings.compiler == "Visual Studio" or self.options.shared:
@@ -161,7 +170,7 @@ class TkConan(ConanFile):
                     cfgdir=self._get_configure_dir("win"),
                     pkgdir=self.package_folder,
                     opts=",".join(opts),
-                    #tcldir=os.path.join(self.source_folder, self._source_tcl_subfolder),  # self.deps_cpp_info["tcl"].rootpath,
+                    tcldir=os.path.join(self.source_folder, self._source_tcl_subfolder),
                     target=target,
                 ), cwd=self._get_configure_dir("win"),
             )
@@ -190,22 +199,8 @@ class TkConan(ConanFile):
         ]
 
         autoTools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
-        #autoTools.include_paths.append(os.path.join(self.source_folder, self._source_tcl_subfolder, "generic"))
-        #autoTools.include_paths.append(os.path.join(self.source_folder, self._source_tcl_subfolder, "unix"))
-        autoTools.link_flags.extend(["-framework", "Cocoa"])
-        os.environ['PATH'] = self.deps_cpp_info['tcl'].rootpath + os.path.pathsep + os.environ['PATH']
         autoTools.configure(configure_dir=self._get_configure_dir(), args=conf_args)
-
-        try:
-            with tools.chdir(self.build_folder):
-                autoTools.make()
-        except ConanException:
-            #self.output.error("make failed!")
-            #self.output.info("Outputting config.log")
-            #self.output.info(open(os.path.join(self.build_folder, "config.log")).read())
-            #self.output.info("Outputting config.status")
-            #self.output.info(open(os.path.join(self.build_folder, "config.status")).read())
-            raise
+        autoTools.make()
 
     def build(self):
         if self.settings.compiler == "Visual Studio":
