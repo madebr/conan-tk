@@ -12,7 +12,7 @@ import tempfile
 
 class TkConan(ConanFile):
     name = "tk"
-    version = "8.6.9"
+    version = "8.6.9.1"
     description = "Tk is a graphical user interface toolkit that takes developing desktop applications to a higher level than conventional approaches."
     topics = ["conan", "tcl", "scripting", "programming"]
     url = "https://github.com/bincrafters/conan-tk"
@@ -29,11 +29,15 @@ class TkConan(ConanFile):
         "shared": False,
         "fPIC": True,
     }
-    _source_subfolder = "sources_tk"
-    _source_tcl_subfolder = "sources_tcl"
+    _source_subfolder = "sources"
+    _tcl_version = "8.6.9"
+
+    def configure(self):
+        if self.version.split(".")[:3] != self._tcl_version.split(".")[:3]:
+            raise ConanInvalidConfiguration("Versions of tcl and tk do not match")
 
     def requirements(self):
-        self.requires("tcl/{}@bincrafters/stable".format(self.version))
+        self.requires("tcl/{}@bincrafters/stable".format(self._tcl_version))
 
     @property
     def _is_mingw_windows(self):
@@ -55,41 +59,37 @@ class TkConan(ConanFile):
             self.build_requires("msys2_installer/latest@bincrafters/stable")
 
     def source(self):
+        tk_filename_version = ".".join(self.version.split(".")[:3])
+        print('tk_filename_version', tk_filename_version)
         filename_tk = "tk{}-src.tar.gz".format(self.version)
-        url_tk = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tk)
-        sha256_tk = "d3f9161e8ba0f107fe8d4df1f6d3a14c30cc3512dfc12a795daa367a27660dac"
+        url_tk = "https://prdownloads.sourceforge.net/tcl/tk{}-src.tar.gz".format(filename_tk)
+        sha256_tk = "8fcbcd958a8fd727e279f4cac00971eee2ce271dc741650b1fc33375fb74ebb4"
 
-        # building tk on macos and windows requires the tcl sources
-        filename_tcl = "tcl{}-src.tar.gz".format(self.version)
-        url_tcl = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tcl)
-        sha256_tcl = "ad0cd2de2c87b9ba8086b43957a0de3eb2eb565c7159d5f53ccbba3feb915f4e"
+        name, filename, url, sha256, extracted_dir, source_subfolder = "tk", filename_tk, url_tk, sha256_tk, "tk{}".format(tk_filename_version), self._source_subfolder
 
-        for name, filename, url, sha256, source_subfolder in (("tk", filename_tk, url_tk, sha256_tk, self._source_subfolder),
-                                            ("tcl", filename_tcl, url_tcl, sha256_tcl, self._source_tcl_subfolder)):
-            dlfilepath = os.path.join(tempfile.gettempdir(), filename)
-            if os.path.exists(dlfilepath) and not get_env("TK_FORCE_DOWNLOAD", False):
-                self.output.info("Skipping download. Using cached {}".format(dlfilepath))
-            else:
-                self.output.info("Downloading {} from {}".format(self.name, url))
-                tools.download(url, dlfilepath)
-            tools.check_sha256(dlfilepath, sha256)
-            tools.untargz(dlfilepath)
+        dlfilepath = os.path.join(tempfile.gettempdir(), filename)
+        if os.path.exists(dlfilepath) and not get_env("TK_FORCE_DOWNLOAD", False):
+            self.output.info("Skipping download. Using cached {}".format(dlfilepath))
+        else:
+            self.output.info("Downloading {} from {}".format(self.name, url))
+            tools.download(url, dlfilepath)
+        tools.check_sha256(dlfilepath, sha256)
+        tools.untargz(dlfilepath)
 
-            extracted_dir = "{}{}".format(name, self.version)
-            os.rename(extracted_dir, source_subfolder)
+        os.rename(extracted_dir, source_subfolder)
 
-            unix_config_dir = self._get_configure_dir("unix", source_subfolder)
-            # When disabling 64-bit support (in 32-bit), this test must be 0 in order to use "long long" for 64-bit ints
-            # (${tcl_type_64bit} can be either "__int64" or "long long")
-            tools.replace_in_file(os.path.join(unix_config_dir, "configure"),
-                                  "(sizeof(${tcl_type_64bit})==sizeof(long))",
-                                  "(sizeof(${tcl_type_64bit})!=sizeof(long))")
+        unix_config_dir = self._get_configure_dir("unix", source_subfolder)
+        # When disabling 64-bit support (in 32-bit), this test must be 0 in order to use "long long" for 64-bit ints
+        # (${tcl_type_64bit} can be either "__int64" or "long long")
+        tools.replace_in_file(os.path.join(unix_config_dir, "configure"),
+                              "(sizeof(${tcl_type_64bit})==sizeof(long))",
+                              "(sizeof(${tcl_type_64bit})!=sizeof(long))")
 
-            unix_makefile_in = os.path.join(unix_config_dir, "Makefile.in")
-            # Avoid clearing CFLAGS and LDFLAGS in the makefile
-            tools.replace_in_file(unix_makefile_in, "\nCFLAGS\t", "\n#CFLAGS\t")
-            tools.replace_in_file(unix_makefile_in, "\nLDFLAGS\t", "\n#LDFLAGS\t")
-            tools.replace_in_file(unix_makefile_in, "${CFLAGS}", "${CFLAGS} ${CPPFLAGS}")
+        unix_makefile_in = os.path.join(unix_config_dir, "Makefile.in")
+        # Avoid clearing CFLAGS and LDFLAGS in the makefile
+        tools.replace_in_file(unix_makefile_in, "\nCFLAGS\t", "\n#CFLAGS\t")
+        tools.replace_in_file(unix_makefile_in, "\nLDFLAGS\t", "\n#LDFLAGS\t")
+        tools.replace_in_file(unix_makefile_in, "${CFLAGS}", "${CFLAGS} ${CPPFLAGS}")
 
     def config_options(self):
         if self.settings.compiler == "Visual Studio" or self.options.shared:
@@ -161,25 +161,10 @@ class TkConan(ConanFile):
                     cfgdir=self._get_configure_dir("win"),
                     pkgdir=self.package_folder,
                     opts=",".join(opts),
-                    tcldir=os.path.join(self.source_folder, self._source_tcl_subfolder),  # self.deps_cpp_info["tcl"].rootpath,
+                    #tcldir=os.path.join(self.source_folder, self._source_tcl_subfolder),  # self.deps_cpp_info["tcl"].rootpath,
                     target=target,
                 ), cwd=self._get_configure_dir("win"),
             )
-
-    def _patch_tclConfig_sh(self):
-        try:
-            tclConfig_sh = open(os.path.join(self.deps_cpp_info["tcl"].rootpath, "lib", "tclConfig.sh"), "r").read()
-            match = re.search("^TCL_PREFIX='(.*)'$", tclConfig_sh, flags=re.MULTILINE)
-            tclOriginalPrefix = match.group(1)
-
-            tclCurrentPrefix = self.deps_cpp_info["tcl"].rootpath
-            newTclConfig_sh = tclConfig_sh.replace(tclOriginalPrefix, tclCurrentPrefix)
-
-            newTclConfig_sh_path = os.path.join(self.build_folder, "tclConfig.sh")
-            open(newTclConfig_sh_path, "w").write(newTclConfig_sh)
-        except (AttributeError, FileNotFoundError):
-            raise ConanInvalidConfiguration("Patching tclConfig.sh failed")
-        return newTclConfig_sh_path
 
     def _build_autotools(self):
         # FIXME: move this fixing of tclConfig.sh to tcl
@@ -194,7 +179,6 @@ class TkConan(ConanFile):
                               "#TCL_BUILD_",
                               strict=False)
 
-        # tclConfigShPath = self._patch_tclConfig_sh()
         conf_args = [
             "--with-tcl={}".format(os.path.dirname(tclConfigShPath.replace("\\", "/"))),
             "--enable-threads",
@@ -202,10 +186,13 @@ class TkConan(ConanFile):
             "--enable-symbols" if self.settings.build_type == "Debug" else "--disable-symbols",
             "--enable-64bit" if self.settings.arch == "x86_64" else "--disable-64bit",
             "--with-x" if self.settings.os == "Linux" else "--without-x",
-            "--enable-aqua={}".format("on" if self.settings.os == "Macos" else "off"),
+            "--enable-aqua={}".format("yes" if self.settings.os == "Macos" else "no"),  # autotools fails using aqua
         ]
+
         autoTools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
-        autoTools.include_paths.append(os.path.join(self.source_folder, self._source_tcl_subfolder, "generic"))
+        #autoTools.include_paths.append(os.path.join(self.source_folder, self._source_tcl_subfolder, "generic"))
+        #autoTools.include_paths.append(os.path.join(self.source_folder, self._source_tcl_subfolder, "unix"))
+        autoTools.link_flags.extend(["-framework", "Cocoa"])
         os.environ['PATH'] = self.deps_cpp_info['tcl'].rootpath + os.path.pathsep + os.environ['PATH']
         autoTools.configure(configure_dir=self._get_configure_dir(), args=conf_args)
 
@@ -213,11 +200,11 @@ class TkConan(ConanFile):
             with tools.chdir(self.build_folder):
                 autoTools.make()
         except ConanException:
-            self.output.error("make failed!")
-            self.output.info("Outputting config.log")
-            self.output.info(open(os.path.join(self.build_folder, "config.log")).read())
-            self.output.info("Outputting config.status")
-            self.output.info(open(os.path.join(self.build_folder, "config.status")).read())
+            #self.output.error("make failed!")
+            #self.output.info("Outputting config.log")
+            #self.output.info(open(os.path.join(self.build_folder, "config.log")).read())
+            #self.output.info("Outputting config.status")
+            #self.output.info(open(os.path.join(self.build_folder, "config.status")).read())
             raise
 
     def build(self):
@@ -235,6 +222,17 @@ class TkConan(ConanFile):
                 autoTools.install()
             shutil.rmtree(os.path.join(self.package_folder, "lib", "pkgconfig"))
         self.copy(pattern="license.terms", dst="licenses", src=self._source_subfolder)
+        
+        tkConfigShPath = os.path.join(self.package_folder, "lib", "tkConfig.sh")
+        tools.replace_in_file(tkConfigShPath,
+                              os.path.join(self.package_folder),
+                              "${TK_ROOT}")
+        tools.replace_in_file(tkConfigShPath,
+                              "\nTK_BUILD_",
+                              "\n#TK_BUILD_")
+        tools.replace_in_file(tkConfigShPath,
+                              "\nTK_SRC_DIR",
+                              "\n#TK_SRC_DIR")
 
     def package_info(self):
         libs = tools.collect_libs(self)
@@ -247,7 +245,17 @@ class TkConan(ConanFile):
         self.cpp_info.libdirs = libdirs
         self.cpp_info.libs = libs
         self.cpp_info.includedirs = ["include"]
-        self.env_info.TK_LIBRARY = os.path.join(self.package_folder, "lib", "{}{}".format(self.name, ".".join(self.version.split(".")[:2])))
         if self.settings.os == "Macos":
+            self.cpp_info.exelinkflags.append("-framework CoreFoundation")
             self.cpp_info.exelinkflags.append("-framework Cocoa")
+            self.cpp_info.exelinkflags.append("-framework Carbon")
+            self.cpp_info.exelinkflags.append("-framework IOKit")
             self.cpp_info.sharedlinkflags = self.cpp_info.exelinkflags
+        
+        tk_library = os.path.join(self.package_folder, "lib", "{}{}".format(self.name, ".".join(self.version.split(".")[:2])))
+        self.output.info("Setting TCL_LIBRARY environment variable to {}".format(tk_library))
+        self.env_info.TK_LIBRARY = tk_library
+       
+        tcl_root = self.package_folder
+        self.output.info("Setting TCL_ROOT environment variable to {}".format(tcl_root))
+        self.env_info.TCL_ROOT = tcl_root
