@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from conans import ConanFile, AutoToolsBuildEnvironment, tools
-from conans.errors import ConanExceptionInUserConanfileMethod
+from conans.errors import ConanException, ConanExceptionInUserConanfileMethod
 from conans.util.env_reader import get_env
 from conans.errors import ConanInvalidConfiguration
 import os
@@ -28,6 +28,11 @@ class TkConan(ConanFile):
         "shared": False,
         "fPIC": True,
     }
+
+    @property
+    def no_copy_source(self):
+        return self.settings.compiler != "Visual Studio"
+
     _source_subfolder = "sources_tk"
     _tcl_version = "8.6.9"
     _source_tcl_subfolder = "sources_tcl"
@@ -61,11 +66,6 @@ class TkConan(ConanFile):
         url_tk = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tk)
         sha256_tk = "8fcbcd958a8fd727e279f4cac00971eee2ce271dc741650b1fc33375fb74ebb4"
 
-        # building tk on macos and windows requires the tcl sources
-        filename_tcl = "tcl{}-src.tar.gz".format(self._tcl_version)
-        url_tcl = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tcl)
-        sha256_tcl = "ad0cd2de2c87b9ba8086b43957a0de3eb2eb565c7159d5f53ccbba3feb915f4e"
-
         def download_tcltk_source(name, filename, url, sha256, extracted_dir, source_subfolder):
             dlfilepath = os.path.join(tempfile.gettempdir(), filename)
             if os.path.exists(dlfilepath) and not get_env("TK_FORCE_DOWNLOAD", False):
@@ -94,9 +94,22 @@ class TkConan(ConanFile):
                 tools.replace_in_file(makefile_in, "\nLDFLAGS\t", "\n#LDFLAGS\t")
                 tools.replace_in_file(makefile_in, "${CFLAGS}", "${CFLAGS} ${CPPFLAGS}")
 
+            rules_ext_vc = os.path.join(self.source_folder, self._source_subfolder, "win", "rules-ext.vc")
+            tools.replace_in_file(rules_ext_vc,
+                                  "\n_RULESDIR = ",
+                                  "\n_RULESDIR = .\n#_RULESDIR = ")
+            rules_vc = os.path.join(self.source_folder, self._source_subfolder, "win", "rules.vc")
+            tools.replace_in_file(rules_vc,
+                                  r"$(_TCLDIR)\generic",
+                                  r"$(_TCLDIR)\include")
+            tools.replace_in_file(rules_vc,
+                                  "\nTCLSTUBLIB",
+                                  "\n#TCLSTUBLIB")
+            tools.replace_in_file(rules_vc,
+                                  "\nTCLIMPLIB",
+                                  "\n#TCLIMPLIB")
+
         download_tcltk_source(name="tk", filename=filename_tk, url=url_tk, sha256=sha256_tk, extracted_dir="tk{}".format(tk_filename_version), source_subfolder=self._source_subfolder)
-        # Building tk on windows, using the tk toolchain requires the tcl sources
-        download_tcltk_source(name="tcl", filename=filename_tcl, url=url_tcl, sha256=sha256_tcl, extracted_dir="tcl{}".format(self._tcl_version), source_subfolder=self._source_tcl_subfolder)
 
         win_makefile_in = os.path.join(self._get_configure_dir("win", self._source_subfolder), "Makefile.in")
         tools.replace_in_file(win_makefile_in, "\nTCL_GENERIC_DIR", "\n#TCL_GENERIC_DIR")
@@ -147,9 +160,7 @@ class TkConan(ConanFile):
         return os.path.join(self.source_folder, source_subfolder, build_system)
 
     def _build_nmake(self, target="release"):
-        # Fails for VS2017+:
         # https://core.tcl.tk/tips/doc/trunk/tip/477.md
-        # https://core.tcl.tk/tk/tktview?name=3d34589aa0
         opts = []
         if not self.options.shared:
             opts.append("static")
@@ -161,13 +172,34 @@ class TkConan(ConanFile):
             opts.append("nomsvcrt")
         if "d" not in self.settings.compiler.runtime:
             opts.append("unchecked")
-        with tools.vcvars(self.settings):
+        # https://core.tcl.tk/tk/tktview?name=3d34589aa0
+        # https://wiki.tcl-lang.org/page/Building+with+Visual+Studio+2017
+        tcl_lib_path = os.path.join(self.deps_cpp_info["tcl"].rootpath, "lib")
+        tclimplib, tclstublib = None, None
+        for lib in os.listdir(tcl_lib_path):
+            if not lib.endswith(".lib"):
+                continue
+            if lib.startswith("tcl{}".format("".join(self.version.split(".")[:2]))):
+                tclimplib = os.path.join(tcl_lib_path, lib)
+            elif lib.startswith("tclstub{}".format("".join(self.version.split(".")[:2]))):
+                tclstublib = os.path.join(tcl_lib_path, lib)
+
+        if tclimplib is None or tclstublib is None:
+            raise ConanException("tcl dependency misses tcl and/or tclstub library")
+        winsdk_version = None
+        if self.settings.compiler.version == 15:
+            winsdk_version = "10.0.15063.0"
+        with tools.vcvars(self.settings, winsdk_version=winsdk_version):
+            tcldir = self.deps_cpp_info["tcl"].rootpath.replace("/", "\\\\")
             self.run(
-                """nmake -nologo -f "{cfgdir}/makefile.vc" shell INSTALLDIR="{pkgdir}" OPTS={opts} TCLDIR="{tcldir}" {target}""".format(
+                """nmake -nologo -f "{cfgdir}/makefile.vc" INSTALLDIR="{pkgdir}" OPTS={opts} TCLDIR="{tcldir}" TCL_LIBRARY="{tcl_library}" TCLIMPLIB="{tclimplib}" TCLSTUBLIB="{tclstublib}" {target}""".format(
                     cfgdir=self._get_configure_dir("win"),
                     pkgdir=self.package_folder,
                     opts=",".join(opts),
-                    tcldir=os.path.join(self.source_folder, self._source_tcl_subfolder),
+                    tcldir=tcldir,
+                    tclstublib=tclstublib,
+                    tclimplib=tclimplib,
+                    tcl_library=self.deps_env_info['tcl'].TCL_LIBRARY.replace("\\", "/"),
                     target=target,
                 ), cwd=self._get_configure_dir("win"),
             )
@@ -209,18 +241,19 @@ class TkConan(ConanFile):
             if not self._is_mingw_windows:
                 shutil.rmtree(os.path.join(self.package_folder, "lib", "pkgconfig"))
         self.copy(pattern="license.terms", dst="licenses", src=self._source_subfolder)
-        
+
         tkConfigShPath = os.path.join(self.package_folder, "lib", "tkConfig.sh")
-        pkg_path = os.path.join(self.package_folder).replace('\\', '/')
-        tools.replace_in_file(tkConfigShPath,
-                              pkg_path,
-                              "${TK_ROOT}")
-        tools.replace_in_file(tkConfigShPath,
-                              "\nTK_BUILD_",
-                              "\n#TK_BUILD_")
-        tools.replace_in_file(tkConfigShPath,
-                              "\nTK_SRC_DIR",
-                              "\n#TK_SRC_DIR")
+        if os.path.exists(tkConfigShPath):
+            pkg_path = os.path.join(self.package_folder).replace('\\', '/')
+            tools.replace_in_file(tkConfigShPath,
+                                  pkg_path,
+                                  "${TK_ROOT}")
+            tools.replace_in_file(tkConfigShPath,
+                                  "\nTK_BUILD_",
+                                  "\n#TK_BUILD_")
+            tools.replace_in_file(tkConfigShPath,
+                                  "\nTK_SRC_DIR",
+                                  "\n#TK_SRC_DIR")
 
     def package_info(self):
         libs = tools.collect_libs(self)
@@ -245,7 +278,7 @@ class TkConan(ConanFile):
                                        "shell32", "uuid", "ole32", "oleaut32"])
         
         tk_library = os.path.join(self.package_folder, "lib", "{}{}".format(self.name, ".".join(self.version.split(".")[:2])))
-        self.output.info("Setting TCL_LIBRARY environment variable to {}".format(tk_library))
+        self.output.info("Setting TK_LIBRARY environment variable to {}".format(tk_library))
         self.env_info.TK_LIBRARY = tk_library
        
         tcl_root = self.package_folder
