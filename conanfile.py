@@ -44,6 +44,8 @@ class TkConan(ConanFile):
         if self.version.split(".")[:3] != self._tcl_version.split(".")[:3]:
             raise ConanInvalidConfiguration("Versions of tcl and tk do not match")
 
+        self.options["tcl"].shared = self.options.shared
+
     def requirements(self):
         self.requires("tcl/{}@bincrafters/stable".format(self._tcl_version))
 
