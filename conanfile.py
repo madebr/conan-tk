@@ -151,7 +151,7 @@ class TkConan(ConanFile):
 
     def _get_configure_dir(self, build_system=None, source_subfolder=None):
         if source_subfolder is None:
-            source_subfolder = self._source_subfolder
+            _source_subfolder = self._source_subfolder
         if build_system is None:
             build_system = self._get_default_build_system()
         if build_system not in ["win", "unix", "macosx"]:
