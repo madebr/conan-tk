@@ -2,7 +2,7 @@
 
 from conans import ConanFile, AutoToolsBuildEnvironment, tools
 from conans.errors import ConanException, ConanExceptionInUserConanfileMethod
-from conans.util.env_reader import get_env
+from conans.tools import get_env
 from conans.errors import ConanInvalidConfiguration
 import os
 import shutil
@@ -61,9 +61,8 @@ class TkConan(ConanFile):
 
     def source(self):
         tk_filename_version = ".".join(self.version.split(".")[:3])
-        print('tk_filename_version', tk_filename_version)
         filename_tk = "tk{}-src.tar.gz".format(self.version)
-        url_tk = "https://prdownloads.sourceforge.net/tcl/{}".format(filename_tk)
+        url_tk = "https://downloads.sourceforge.net/project/tcl/Tcl/{}/{}".format(tk_filename_version, filename_tk)
         sha256_tk = "8fcbcd958a8fd727e279f4cac00971eee2ce271dc741650b1fc33375fb74ebb4"
 
         def download_tcltk_source(name, filename, url, sha256, extracted_dir, source_subfolder):
