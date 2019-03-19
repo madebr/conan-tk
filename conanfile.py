@@ -33,9 +33,8 @@ class TkConan(ConanFile):
     def no_copy_source(self):
         return self.settings.compiler != "Visual Studio"
 
-    _source_subfolder = "sources_tk"
+    _source_subfolder = "sources"
     _tcl_version = "8.6.9"
-    _source_tcl_subfolder = "sources_tcl"
 
     def configure(self):
         if self.settings.compiler != "Visual Studio":
@@ -114,6 +113,10 @@ class TkConan(ConanFile):
 
         win_makefile_in = os.path.join(self._get_configure_dir("win", self._source_subfolder), "Makefile.in")
         tools.replace_in_file(win_makefile_in, "\nTCL_GENERIC_DIR", "\n#TCL_GENERIC_DIR")
+
+        tools.replace_in_file(os.path.join(self.source_folder, self._source_subfolder, "win", "rules.vc"),
+                              "\ncwarn = $(cwarn) -WX",
+                              "\n# cwarn = $(cwarn) -WX")
 
     def system_requirements(self):
         if tools.os_info.with_apt:
