@@ -208,6 +208,10 @@ class TkConan(ConanFile):
                 ), cwd=self._get_configure_dir("win"),
             )
 
+    @property
+    def _host_triplet(self):
+        return tools.get_gnu_triplet(str(self.settings.os), str(self.settings.arch), str(self.settings.compiler))
+
     def _build_autotools(self):
         tcl_root = self.deps_cpp_info["tcl"].rootpath
         tclConfigShPath = os.path.join(tcl_root, "lib", "tclConfig.sh")
@@ -225,7 +229,7 @@ class TkConan(ConanFile):
         autoTools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
         if self._is_mingw_windows:
             autoTools.defines.extend(["UNICODE", "_UNICODE", "_ATL_XP_TARGETING", ])
-        autoTools.configure(configure_dir=self._get_configure_dir(), args=conf_args)
+        autoTools.configure(configure_dir=self._get_configure_dir(), args=conf_args, host=self._host_triplet)
         autoTools.make(args=["TCL_GENERIC_DIR={}".format(os.path.join(tcl_root, "include")).replace("\\", "/")])
 
     def build(self):
