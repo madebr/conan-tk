@@ -1,19 +1,16 @@
 # -*- coding: utf-8 -*-
 
 from conans import ConanFile, AutoToolsBuildEnvironment, tools
-from conans.errors import ConanException, ConanExceptionInUserConanfileMethod
-from conans.tools import get_env
-from conans.errors import ConanInvalidConfiguration
+from conans.errors import ConanException, ConanInvalidConfiguration, ConanExceptionInUserConanfileMethod
 import os
 import shutil
-import tempfile
 
 
 class TkConan(ConanFile):
     name = "tk"
     version = "8.6.9.1"
     description = "Tk is a graphical user interface toolkit that takes developing desktop applications to a higher level than conventional approaches."
-    topics = ["conan", "tcl", "scripting", "programming"]
+    topics = ("conan", "tcl", "scripting", "programming")
     url = "https://github.com/bincrafters/conan-tk"
     homepage = "https://tcl.tk"
     author = "Bincrafters <bincrafters@gmail.com>"
@@ -29,11 +26,7 @@ class TkConan(ConanFile):
         "fPIC": True,
     }
 
-    @property
-    def no_copy_source(self):
-        return self.settings.compiler != "Visual Studio"
-
-    _source_subfolder = "sources"
+    _source_subfolder = "source_subfolder"
     _tcl_version = "8.6.9"
 
     def configure(self):
@@ -64,54 +57,49 @@ class TkConan(ConanFile):
         tk_filename_version = ".".join(self.version.split(".")[:3])
         filename_tk = "tk{}-src.tar.gz".format(self.version)
         url_tk = "https://downloads.sourceforge.net/project/tcl/Tcl/{}/{}".format(tk_filename_version, filename_tk)
-        sha256_tk = "8fcbcd958a8fd727e279f4cac00971eee2ce271dc741650b1fc33375fb74ebb4"
+        sha256 = "8fcbcd958a8fd727e279f4cac00971eee2ce271dc741650b1fc33375fb74ebb4"
 
-        def download_tcltk_source(name, filename, url, sha256, extracted_dir, source_subfolder):
-            dlfilepath = os.path.join(tempfile.gettempdir(), filename)
-            if os.path.exists(dlfilepath) and not get_env("TK_FORCE_DOWNLOAD", False):
-                self.output.info("Skipping download. Using cached {}".format(dlfilepath))
-            else:
-                self.output.info("Downloading {} from {}".format(self.name, url))
-                tools.download(url, dlfilepath)
-            tools.check_sha256(dlfilepath, sha256)
-            tools.untargz(dlfilepath)
+        tools.get(url_tk, sha256=sha256)
 
-            os.rename(extracted_dir, source_subfolder)
+        extracted_dir = "tk{}".format(tk_filename_version)
+        os.rename(extracted_dir, self._source_subfolder)
 
-            for build_system in ("unix", "win", ):
-                config_dir = self._get_configure_dir(build_system, source_subfolder)
+    def _fix_sources(self):
+        # download_tcltk_source(name="tk", filename=filename_tk, url=url_tk, sha256=sha256, extracted_dir="tk{}".format(tk_filename_version), source_subfolder=self._source_subfolder)
+        # def download_tcltk_source(name, filename, url, sha256, extracted_dir, source_subfolder):
 
-                if build_system != "win":
-                    # When disabling 64-bit support (in 32-bit), this test must be 0 in order to use "long long" for 64-bit ints
-                    # (${tcl_type_64bit} can be either "__int64" or "long long")
-                    tools.replace_in_file(os.path.join(config_dir, "configure"),
-                                          "(sizeof(${tcl_type_64bit})==sizeof(long))",
-                                          "(sizeof(${tcl_type_64bit})!=sizeof(long))")
+        for build_system in ("unix", "win", ):
+            config_dir = self._get_configure_dir(build_system)
 
-                makefile_in = os.path.join(config_dir, "Makefile.in")
-                # Avoid clearing CFLAGS and LDFLAGS in the makefile
-                tools.replace_in_file(makefile_in, "\nCFLAGS{}".format(" " if (build_system == "win" and name == "tcl") else "\t"), "\n#CFLAGS\t")
-                tools.replace_in_file(makefile_in, "\nLDFLAGS\t", "\n#LDFLAGS\t")
-                tools.replace_in_file(makefile_in, "${CFLAGS}", "${CFLAGS} ${CPPFLAGS}")
+            if build_system != "win":
+                # When disabling 64-bit support (in 32-bit), this test must be 0 in order to use "long long" for 64-bit ints
+                # (${tcl_type_64bit} can be either "__int64" or "long long")
+                tools.replace_in_file(os.path.join(config_dir, "configure"),
+                                      "(sizeof(${tcl_type_64bit})==sizeof(long))",
+                                      "(sizeof(${tcl_type_64bit})!=sizeof(long))")
 
-            rules_ext_vc = os.path.join(self.source_folder, self._source_subfolder, "win", "rules-ext.vc")
-            tools.replace_in_file(rules_ext_vc,
-                                  "\n_RULESDIR = ",
-                                  "\n_RULESDIR = .\n#_RULESDIR = ")
-            rules_vc = os.path.join(self.source_folder, self._source_subfolder, "win", "rules.vc")
-            tools.replace_in_file(rules_vc,
-                                  r"$(_TCLDIR)\generic",
-                                  r"$(_TCLDIR)\include")
-            tools.replace_in_file(rules_vc,
-                                  "\nTCLSTUBLIB",
-                                  "\n#TCLSTUBLIB")
-            tools.replace_in_file(rules_vc,
-                                  "\nTCLIMPLIB",
-                                  "\n#TCLIMPLIB")
+            makefile_in = os.path.join(config_dir, "Makefile.in")
+            # Avoid clearing CFLAGS and LDFLAGS in the makefile
+            # tools.replace_in_file(makefile_in, "\nCFLAGS{}".format(" " if (build_system == "win" and name == "tcl") else "\t"), "\n#CFLAGS\t")
+            tools.replace_in_file(makefile_in, "\nLDFLAGS\t", "\n#LDFLAGS\t")
+            tools.replace_in_file(makefile_in, "${CFLAGS}", "${CFLAGS} ${CPPFLAGS}")
 
-        download_tcltk_source(name="tk", filename=filename_tk, url=url_tk, sha256=sha256_tk, extracted_dir="tk{}".format(tk_filename_version), source_subfolder=self._source_subfolder)
+        rules_ext_vc = os.path.join(self.source_folder, self._source_subfolder, "win", "rules-ext.vc")
+        tools.replace_in_file(rules_ext_vc,
+                              "\n_RULESDIR = ",
+                              "\n_RULESDIR = .\n#_RULESDIR = ")
+        rules_vc = os.path.join(self.source_folder, self._source_subfolder, "win", "rules.vc")
+        tools.replace_in_file(rules_vc,
+                              r"$(_TCLDIR)\generic",
+                              r"$(_TCLDIR)\include")
+        tools.replace_in_file(rules_vc,
+                              "\nTCLSTUBLIB",
+                              "\n#TCLSTUBLIB")
+        tools.replace_in_file(rules_vc,
+                              "\nTCLIMPLIB",
+                              "\n#TCLIMPLIB")
 
-        win_makefile_in = os.path.join(self._get_configure_dir("win", self._source_subfolder), "Makefile.in")
+        win_makefile_in = os.path.join(self._get_configure_dir("win"), "Makefile.in")
         tools.replace_in_file(win_makefile_in, "\nTCL_GENERIC_DIR", "\n#TCL_GENERIC_DIR")
 
         tools.replace_in_file(os.path.join(self.source_folder, self._source_subfolder, "win", "rules.vc"),
@@ -126,9 +114,13 @@ class TkConan(ConanFile):
                 arch_suffix = ":i386"
             elif self.settings.arch == "x86_64":
                 arch_suffix = ":amd64"
+            else:
+                raise ConanException("Unsupported arch: {}".format(str(self.settings.arch)))
             packages.extend(["libx11-dev%s" % arch_suffix,
                              "libxext-dev%s" % arch_suffix,
-                             "libxss-dev%s" % arch_suffix])
+                             "libxss-dev%s" % arch_suffix,
+                             "libxft-dev%s" % arch_suffix,
+                             "libfontconfig1-dev%s" % arch_suffix])
             for package in packages:
                 installer.install(package)
         if tools.os_info.with_yum:
@@ -138,9 +130,13 @@ class TkConan(ConanFile):
                 arch_suffix = ".i686"
             elif self.settings.arch == "x86_64":
                 arch_suffix = ".x86_64"
+            else:
+                raise ConanException("Unsupported arch: {}".format(str(self.settings.arch)))
             packages.extend(["libX11-devel%s" % arch_suffix,
                              "libXext-devel%s" % arch_suffix,
-                             "libXScrnSaver-devel%s" % arch_suffix])
+                             "libXScrnSaver-devel%s" % arch_suffix,
+                             "libXft-devel%s" % arch_suffix,
+                             "fontconfig-devel"])
             for package in packages:
                 installer.install(package)
 
@@ -154,14 +150,12 @@ class TkConan(ConanFile):
         else:
             raise ConanExceptionInUserConanfileMethod("Unknown settings.os={}".format(self.settings.os))
 
-    def _get_configure_dir(self, build_system=None, source_subfolder=None):
-        if source_subfolder is None:
-            source_subfolder = self._source_subfolder
+    def _get_configure_dir(self, build_system=None):
         if build_system is None:
             build_system = self._get_default_build_system()
         if build_system not in ["win", "unix", "macosx"]:
             raise ConanExceptionInUserConanfileMethod("Invalid build system: {}".format(build_system))
-        return os.path.join(self.source_folder, source_subfolder, build_system)
+        return os.path.join(self.source_folder, self._source_subfolder, build_system)
 
     def _build_nmake(self, target="release"):
         # https://core.tcl.tk/tips/doc/trunk/tip/477.md
@@ -210,7 +204,8 @@ class TkConan(ConanFile):
 
     @property
     def _host_triplet(self):
-        return tools.get_gnu_triplet(str(self.settings.os), str(self.settings.arch), str(self.settings.compiler))
+        return False
+        # return tools.get_gnu_triplet(str(self.settings.os), str(self.settings.arch), str(self.settings.compiler))
 
     def _build_autotools(self):
         tcl_root = self.deps_cpp_info["tcl"].rootpath
@@ -233,6 +228,7 @@ class TkConan(ConanFile):
         autoTools.make(args=["TCL_GENERIC_DIR={}".format(os.path.join(tcl_root, "include")).replace("\\", "/")])
 
     def build(self):
+        self._fix_sources()
         if self.settings.compiler == "Visual Studio":
             self._build_nmake()
         else:
@@ -265,15 +261,9 @@ class TkConan(ConanFile):
 
     def package_info(self):
         libs = tools.collect_libs(self)
-        libdirs = ["lib"]
         if self.settings.os == "Linux":
-            libs.extend(["X11", "Xss", "Xext"])
-        defines = []
-        self.cpp_info.defines = defines
-        self.cpp_info.bindirs = ["bin"]
-        self.cpp_info.libdirs = libdirs
+            libs.extend(["X11", "Xss", "Xext", "Xft", "fontconfig"])
         self.cpp_info.libs = libs
-        self.cpp_info.includedirs = ["include"]
         if self.settings.os == "Macos":
             self.cpp_info.exelinkflags.append("-framework CoreFoundation")
             self.cpp_info.exelinkflags.append("-framework Cocoa")
